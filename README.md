@@ -74,7 +74,7 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Engine | Pattern | What happens |
 |---|---|---|
 | Ruby 3.3.6 | `/((?=(.)))+/` on `"a"` | `RegexpError: failed to allocate memory`; without a memory limit the process is killed by the system. A one-character input. |
-| Ruby 3.3.6 | `/\B.+/m` on `"a a_"` | `nil`, while the identical `/\B[\s\S]+/` finds `"_"` (also `$.+` with `m`) |
+| Ruby 3.3.6 | `/\B.+/m` on `"a a_"` | `nil`, while the identical `/\B[\s\S]+/` finds `"_"` (also `$.+` with `m`). Fixed by Ruby 3.3.12. |
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 

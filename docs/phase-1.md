@@ -93,12 +93,13 @@ The one exception (6) is counted and reported separately.
 | Engine | Minimal case | What happens |
 |---|---|---|
 | Ruby 3.3.6 | `/((?=(.)))+/.match("a")` | `RegexpError: failed to allocate memory`. With no memory limit Ruby keeps allocating until the system kills it: one character of input. |
-| Ruby 3.3.6 | `"a a_"[/\B.+/m]` | `nil` instead of `"_"` (see 2 above) |
+| Ruby 3.3.6 | `"a a_"[/\B.+/m]` | `nil` instead of `"_"` (see 2 above). Fixed by Ruby 3.3.12, which CI happened to install first. |
 | Ruby 3.3.6 | `"!\u212A" =~ /\W+k/i` | `nil` instead of `0` (see 3 above) |
 | Ruby 3.3.6 | `"\u212Aa"[/k?a/i]` | `"a"`, though `/\Ak?\z/i` matches `\u212A` and `/k*a/i` gives `"\u212Aa"` (see 6 above) |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module`. Without the possessive `+` it matches `"xy"`. |
 
-These have not been reported upstream yet, and a newer release may already have fixed some of them. Each is a
+These have not been reported upstream yet. Ruby 3.3.12 fixes the second one; the other two Ruby bugs are
+still there in 3.3.12 (checked on CI). Each is a
 one-line reproduction, ready to file.
 
 The random patterns also produced real ReDoS by accident: `(?:(?:|.?){2})+n` takes 3.8 s in Python and 1.1 s in

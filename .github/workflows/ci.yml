@@ -13,16 +13,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      # The engines the model is checked against (and src/tables.rs was generated from).
+      # The exact engine versions the model was checked against and src/tables.rs / src/folds.rs were generated
+      # from. Patch releases change behaviour (Ruby 3.3.12 fixed one of the bugs pinned in tests/engines.rs).
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.22.0"
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.11.15"
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.3"
+          ruby-version: "3.3.6"
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
