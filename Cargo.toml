@@ -1,0 +1,15 @@
+[package]
+name = "redos-proof"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Finds regular expressions vulnerable to catastrophic backtracking (ReDoS) and proves each finding on the real engine"
+repository = "https://github.com/Shibin506/redos-proof"
+license = "MIT"
+readme = "README.md"
+keywords = ["redos", "regex", "security", "static-analysis", "backtracking"]
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1"
