@@ -3,8 +3,9 @@
 Finds regular expressions that can freeze a program (ReDoS: catastrophic backtracking), and **proves** each
 finding by building the input that makes it slow and running it on the real regex engine.
 
-> **Status: Phase 1 of 6.** The foundation is done: an exact model of how JavaScript, Python and Ruby
-> backtrack, checked against the real engines. Finding and proving vulnerable patterns come next.
+> **Status: Phase 2 of 6.** The detector works: it finds exponential and polynomial backtracking and proves
+> each finding by measuring the blow-up, with no false positives against real Node. Runs over an exact model
+> of how JavaScript, Python and Ruby backtrack, checked against the real engines.
 
 ## Why
 
@@ -19,13 +20,37 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 | Phase | What | Status |
 |---|---|---|
 | 1 | Parser for JavaScript, Python and Ruby syntax; a model of their backtracking, step-counted; checked against the real engines | **done** |
-| 2 | Static analysis: exponential and polynomial ambiguity, and the attack string for each finding | |
+| 2 | Static analysis: exponential and polynomial ambiguity, the attack string for each finding, confirmed by measurement | **done** |
 | 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths and fit the time curve | |
 | 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | |
 | 5 | Measurement: published ReDoS advisories as a test set, real repositories, other tools | |
 | 6 | Figures, docs, polish | |
 
 ## What works now
+
+Scan a pattern for catastrophic backtracking. A finding comes with its proof: the attack input, and the
+measured step count as the attack grows. `scan` exits non-zero on a vulnerable pattern, so it can gate CI.
+
+```bash
+$ cargo run --release -- scan '(a+)+$'
+VULNERABLE: EXPONENTIAL (one extra character can double the work)
+  prefix   "aa"
+  pump     "a"
+  suffix   "!"
+  proof: measured steps as the pump repeats (prefix + pump*n + suffix):
+    n=12   139242 steps
+    n=16   2228198 steps
+    n=20   20000001 steps   (the simulator gave up: the work is already astronomical)
+  example attack input (pump x20): "aaaaaaaaaaaaaaaaaaaaaa!"
+
+$ cargo run --release -- scan --dialect python '(?>a+)+$'    # atomic group: safe
+no catastrophic backtracking found (not a guarantee of safety; see the limits in the docs)
+
+$ cargo run --release -- scan '.*.*=.*'
+VULNERABLE: POLYNOMIAL degree 2 (work grows like length^2)
+```
+
+Under the hood, the step counter that proves each finding:
 
 ```bash
 cargo run --release -- steps '^(a+)+$' '' a '!'        # prefix, pumped string, suffix
@@ -78,7 +103,7 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 
-More in [docs/phase-1.md](docs/phase-1.md).
+More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding and proving vulnerable patterns).
 
 ## License
 

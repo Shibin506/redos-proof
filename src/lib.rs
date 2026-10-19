@@ -1,6 +1,7 @@
 //! redos-proof: finds regular expressions that can take exponential or polynomial time on a backtracking
 //! engine, and proves it by building the input that makes them slow.
 
+pub mod analysis;
 pub mod ast;
 pub mod charset;
 pub mod matcher;

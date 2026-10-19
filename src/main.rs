@@ -4,9 +4,12 @@
 //!       where the leftmost match is, and how many steps a backtracking engine takes to find it
 //!   redos-proof steps [--dialect ...] [--flags ...] <pattern> <prefix> <pump> <suffix> [max-n]
 //!       how the work grows as `pump` is repeated: prefix + pump×n + suffix, for n = 1, 2, 4, 8...
+//!   redos-proof scan [--dialect ...] [--flags ...] <pattern>
+//!       report whether the pattern is vulnerable to catastrophic backtracking, with the proof
 
 use std::process::ExitCode;
 
+use redos_proof::analysis::{Blowup, analyze};
 use redos_proof::matcher::{Outcome, search};
 use redos_proof::nfa::compile;
 use redos_proof::{Dialect, Flags, parse};
@@ -82,6 +85,47 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        ("scan", [pattern]) => {
+            let nfa = match nfa(pattern) {
+                Ok(n) => n,
+                Err(e) => return fail(&e),
+            };
+            match analyze(&nfa) {
+                Err(e) => {
+                    println!("not analysed: {e:?}");
+                    ExitCode::SUCCESS
+                }
+                Ok(findings) if findings.is_empty() => {
+                    println!("no catastrophic backtracking found (not a guarantee of safety; see the limits in the docs)");
+                    ExitCode::SUCCESS
+                }
+                Ok(findings) => {
+                    let f = &findings[0];
+                    let kind = match f.blowup {
+                        Blowup::Exponential => "EXPONENTIAL (one extra character can double the work)".to_string(),
+                        Blowup::Polynomial { degree } => format!("POLYNOMIAL degree {degree} (work grows like length^{degree})"),
+                    };
+                    println!("VULNERABLE: {kind}");
+                    let show = |label: &str, v: &[u32]| {
+                        let s: String = v.iter().filter_map(|&c| char::from_u32(c)).collect();
+                        println!("  {label:8} {s:?}");
+                    };
+                    show("prefix", &f.prefix);
+                    show("pump", &f.pump);
+                    show("suffix", &f.suffix);
+                    println!("  proof: measured steps as the pump repeats (prefix + pump*n + suffix):");
+                    for (n, steps) in &f.growth.samples {
+                        println!("    n={n:<4} {steps} steps");
+                    }
+                    if f.growth.hit_cap {
+                        println!("    (the simulator gave up: the work is already astronomical)");
+                    }
+                    println!("  example attack input (pump x20): {:?}", f.input(20));
+                    // Exit non-zero so the command can gate a CI check or a pre-commit hook.
+                    ExitCode::FAILURE
+                }
+            }
+        }
         _ => usage(),
     }
 }
@@ -94,5 +138,6 @@ fn fail(e: &str) -> ExitCode {
 fn usage() -> ExitCode {
     eprintln!("usage: redos-proof match [--dialect js|python|ruby] [--flags F] <pattern> <input>");
     eprintln!("       redos-proof steps [--dialect ...] [--flags F] <pattern> <prefix> <pump> <suffix> [max-n]");
+    eprintln!("       redos-proof scan  [--dialect ...] [--flags F] <pattern>");
     ExitCode::from(2)
 }
