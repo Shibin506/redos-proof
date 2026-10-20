@@ -3,6 +3,7 @@
 
 pub mod analysis;
 pub mod ast;
+pub mod bench;
 pub mod charset;
 pub mod matcher;
 pub mod nfa;

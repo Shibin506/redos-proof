@@ -1,0 +1,21 @@
+# dialect\tflags\tpattern\tsource note
+# Each pattern below was confirmed to blow up on the tagged engine (Node / CPython re).
+# "flags" column may be empty. Lines starting with # are comments.
+js		(a+)+$	classic nested quantifier (textbook / OWASP)
+js		(a*)*$	star of star (textbook)
+js		(a+)*$	plus under star (textbook)
+js		(x+x+)+y	OWASP ReDoS example
+js		([a-zA-Z]+)*$	OWASP ReDoS example
+js		(a|a)+$	alternation overlap (textbook)
+js		(.*,)*$	repeated greedy group (textbook)
+js	i	^(([a-z])+.)+[A-Z]([a-z])+$	OWASP Java-classname regex
+js		^(\w+\s?)*$	word-then-space loop (OWASP)
+js		^([a-zA-Z0-9]+\s?)*$	alphanumeric-then-space loop
+js		^(\s*)+$	nested whitespace quantifier
+js		^(.*)*\.$	any-star under star, dotted suffix
+js		([a-z]+)+[0-9]	nested class, trailing digit
+js		^(a+)+b	exponential, mismatching tail
+python		(a+)+$	classic nested quantifier, proved on CPython
+python		(\d+)+$	nested digit quantifier, proved on CPython
+python		([a-zA-Z]+)*$	OWASP example, proved on CPython
+python		(a*)*$	star of star, proved on CPython

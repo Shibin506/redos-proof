@@ -8,6 +8,8 @@
 //!       report whether the pattern is vulnerable to catastrophic backtracking, with the proof
 //!   redos-proof files [--prove] [--sarif] <path>...
 //!       scan source files or directories for vulnerable regexes (JavaScript, TypeScript, Python, Ruby)
+//!   redos-proof bench [--no-prove] [corpus-dir]
+//!       run the detector over the corpus (corpus/vulnerable.txt, corpus/safe.txt) and report recall/precision
 
 use std::process::ExitCode;
 
@@ -163,7 +165,93 @@ fn main() -> ExitCode {
             }
         }
         ("files", rest) if !rest.is_empty() => files_command(rest),
+        ("bench", rest) => bench_command(rest),
         _ => usage(),
+    }
+}
+
+/// `bench [--no-prove] [dir]` — run the detector over the corpus and report recall/precision.
+fn bench_command(args: &[String]) -> ExitCode {
+    use redos_proof::bench::{Engine, Summary, parse_corpus, run};
+
+    let mut prove_on_engine = true;
+    let mut dir = PathBuf::from("corpus");
+    for a in args {
+        match a.as_str() {
+            "--no-prove" => prove_on_engine = false,
+            other if other.starts_with("--") => {
+                eprintln!("unknown option {other}");
+                return ExitCode::from(2);
+            }
+            path => dir = PathBuf::from(path),
+        }
+    }
+
+    let read = |name: &str| std::fs::read_to_string(dir.join(name));
+    let (Ok(vuln_text), Ok(safe_text)) = (read("vulnerable.txt"), read("safe.txt")) else {
+        eprintln!("cannot read {}/vulnerable.txt and {}/safe.txt", dir.display(), dir.display());
+        return ExitCode::from(2);
+    };
+
+    let mut entries = parse_corpus(&vuln_text, true);
+    entries.extend(parse_corpus(&safe_text, false));
+    let outcomes: Vec<_> = entries.iter().map(|e| run(e, prove_on_engine)).collect();
+
+    for o in &outcomes {
+        let status = if o.is_correct() { "ok  " } else { "FAIL" };
+        let engine = match o.engine {
+            Some(Engine::Reproduced) => "  [engine: reproduced]",
+            Some(Engine::NotReproduced) => "  [engine: not reproduced]",
+            Some(Engine::Unavailable) => "  [engine: not installed]",
+            None => "",
+        };
+        let flag = if o.detected { "flagged" } else { "clean  " };
+        let want = if o.entry.expect_vulnerable { "vuln" } else { "safe" };
+        println!(
+            "{status}  {want}  {flag}  {}  /{}/{}{engine}",
+            o.entry.dialect.name(),
+            o.entry.pattern,
+            o.entry.flags,
+        );
+    }
+
+    let s = Summary::of(&outcomes);
+    println!("\n--- corpus summary ---");
+    println!(
+        "vulnerable: {}/{} flagged by the model   (recall {:.0}%)",
+        s.detected,
+        s.vulnerable_total,
+        s.recall() * 100.0
+    );
+    if prove_on_engine {
+        println!(
+            "            {}/{} reproduced on the real engine{}",
+            s.reproduced,
+            s.vulnerable_total,
+            if s.engine_unavailable > 0 {
+                format!(" ({} skipped: engine not installed)", s.engine_unavailable)
+            } else {
+                String::new()
+            }
+        );
+    }
+    println!(
+        "safe:       {}/{} wrongly flagged   (precision {:.0}%)",
+        s.false_positives,
+        s.safe_total,
+        s.precision() * 100.0
+    );
+    if s.unanalysable > 0 {
+        println!("{} entr(y/ies) could not be modelled", s.unanalysable);
+    }
+
+    let failures = outcomes.iter().filter(|o| !o.is_correct()).count();
+    if failures == 0 {
+        println!("\nall {} corpus entries behaved as expected", outcomes.len());
+        ExitCode::SUCCESS
+    } else {
+        println!("\n{failures} corpus entr(y/ies) did not behave as expected");
+        ExitCode::FAILURE
     }
 }
 
@@ -334,5 +422,6 @@ fn usage() -> ExitCode {
     eprintln!("       redos-proof steps [--dialect ...] [--flags F] <pattern> <prefix> <pump> <suffix> [max-n]");
     eprintln!("       redos-proof scan  [--dialect ...] [--flags F] <pattern>");
     eprintln!("       redos-proof files [--prove] [--sarif] <path>...");
+    eprintln!("       redos-proof bench [--no-prove] [corpus-dir]");
     ExitCode::from(2)
 }

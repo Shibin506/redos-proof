@@ -3,9 +3,10 @@
 Finds regular expressions that can freeze a program (ReDoS: catastrophic backtracking), and **proves** each
 finding by building the input that makes it slow and running it on the real regex engine.
 
-> **Status: Phase 4 of 6.** Point it at a codebase: it pulls the regexes out of JavaScript, TypeScript, Python
+> **Status: Phase 5 of 6.** Point it at a codebase: it pulls the regexes out of JavaScript, TypeScript, Python
 > and Ruby source, finds the vulnerable ones, and proves each by running the attack on the real engine. Ships a
-> pre-commit hook, a GitHub Action and SARIF output. Built on an exact model of how the three engines backtrack,
+> pre-commit hook, a GitHub Action and SARIF output, and is measured against a self-verifying corpus (100%
+> recall, 0 false positives) and real repositories. Built on an exact model of how the three engines backtrack,
 > checked against them.
 
 ## Why
@@ -24,7 +25,7 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 | 2 | Static analysis: exponential and polynomial ambiguity, the attack string for each finding, confirmed by measurement | **done** |
 | 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths, verdict from the real timings | **done** |
 | 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | **done** |
-| 5 | Measurement: published ReDoS advisories as a test set, real repositories, other tools | |
+| 5 | Measurement: a self-verifying corpus (recall and precision), real repositories, placement among other tools | **done** |
 | 6 | Figures, docs, polish | |
 
 ## What works now
@@ -73,6 +74,17 @@ scanned 2 files, 3 regexes: 2 vulnerable
 
 Add `--prove` to run each finding on the real engine, or `--sarif` for a GitHub code-scanning report. A
 pre-commit hook (`hooks/pre-commit`) and a GitHub Action (`.github/actions/redos-proof`) are included.
+
+Measure the detector against the corpus — every "vulnerable" entry is one the real engine actually blew up on,
+so the labels cannot lie:
+
+```bash
+$ cargo run --release -- bench
+...
+vulnerable: 18/18 flagged by the model   (recall 100%)
+            18/18 reproduced on the real engine
+safe:       0/16 wrongly flagged   (precision 100%)
+```
 
 Under the hood, the step counter that proposes each finding:
 
@@ -127,7 +139,7 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 
-More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines), [docs/phase-4.md](docs/phase-4.md) (scanning real codebases).
+More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines), [docs/phase-4.md](docs/phase-4.md) (scanning real codebases), [docs/phase-5.md](docs/phase-5.md) (measuring recall and precision against a self-verifying corpus).
 
 ## License
 

@@ -1,0 +1,18 @@
+# dialect\tflags\tpattern\tsource note
+# Real-world linear regexes that must NOT be flagged (false-positive guard).
+js		^[a-z0-9_]+@[a-z]+\.[a-z]+$	simple email check
+js		^[\w.+-]+@[\w-]+\.[\w.-]+$	common email check
+js		^\d{4}-\d{2}-\d{2}$	ISO date
+js		^[a-zA-Z0-9]+$	alphanumeric token
+js	i	^#?([a-f0-9]{6}|[a-f0-9]{3})$	hex colour
+js		^(\d{3})-(\d{3})-(\d{4})$	US phone number
+js		\b\w+\b	word boundary
+js		^https?://	URL scheme
+js		^[A-Z][a-z]+$	capitalised word
+js		^-?\d+(\.\d+)?$	signed decimal number
+js		[a-z]+(-[a-z]+)*	kebab-case identifier
+js		^v?\d+\.\d+\.\d+$	semver core
+js		#[0-9a-fA-F]{3,6}	colour literal
+js		[A-Za-z0-9+/]+={0,2}	base64 run
+python		^\d{4}-\d{2}-\d{2}$	ISO date (python)
+python		^[a-z0-9_]+@[a-z]+\.[a-z]+$	email (python)
