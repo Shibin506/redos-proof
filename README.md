@@ -3,11 +3,15 @@
 Finds regular expressions that can freeze a program (ReDoS: catastrophic backtracking), and **proves** each
 finding by building the input that makes it slow and running it on the real regex engine.
 
-> **Status: Phase 5 of 6.** Point it at a codebase: it pulls the regexes out of JavaScript, TypeScript, Python
-> and Ruby source, finds the vulnerable ones, and proves each by running the attack on the real engine. Ships a
-> pre-commit hook, a GitHub Action and SARIF output, and is measured against a self-verifying corpus (100%
-> recall, 0 false positives) and real repositories. Built on an exact model of how the three engines backtrack,
-> checked against them.
+> **Status: complete (6 of 6 phases).** Point it at a codebase: it pulls the regexes out of JavaScript,
+> TypeScript, Python and Ruby source, finds the vulnerable ones, and proves each by running the attack on the
+> real engine. Ships a pre-commit hook, a GitHub Action and SARIF output, and is measured against a
+> self-verifying corpus (100% recall, 0 false positives) and real repositories. Built on an exact model of how
+> the three engines backtrack, checked against them.
+
+<p align="center">
+  <img src="docs/figures/growth.svg" alt="Backtracking steps versus input length: an exponential regex (a+)+$ reaches half a billion steps at 26 characters while a linear regex a+$ stays flat, on a log scale." width="660">
+</p>
 
 ## Why
 
@@ -19,6 +23,10 @@ Existing linters mostly judge a pattern by its shape (`(a+)+` looks dangerous), 
 patterns and miss dangerous ones that do not look the part. redos-proof will report a pattern as vulnerable
 only with the evidence attached: the attack string, and the measured blow-up on the real engine.
 
+<p align="center">
+  <img src="docs/figures/pipeline.svg" alt="Pipeline: a static model parses the regex, builds a step-counted NFA, and finds the ambiguity and an attack string; then the real engine runs the attack at growing lengths and the verdict is read from the measured timings." width="820">
+</p>
+
 | Phase | What | Status |
 |---|---|---|
 | 1 | Parser for JavaScript, Python and Ruby syntax; a model of their backtracking, step-counted; checked against the real engines | **done** |
@@ -26,7 +34,7 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 | 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths, verdict from the real timings | **done** |
 | 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | **done** |
 | 5 | Measurement: a self-verifying corpus (recall and precision), real repositories, placement among other tools | **done** |
-| 6 | Figures, docs, polish | |
+| 6 | Figures, docs, polish | **done** |
 
 ## What works now
 
@@ -139,7 +147,10 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 
-More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines), [docs/phase-4.md](docs/phase-4.md) (scanning real codebases), [docs/phase-5.md](docs/phase-5.md) (measuring recall and precision against a self-verifying corpus).
+The two figures above are generated from the tool's own output by `script/gen_figures.py` (the growth chart
+is real `match` step counts; re-run it after `cargo build --release`).
+
+More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines), [docs/phase-4.md](docs/phase-4.md) (scanning real codebases), [docs/phase-5.md](docs/phase-5.md) (measuring recall and precision against a self-verifying corpus), [docs/phase-6.md](docs/phase-6.md) (the figures and the final polish).
 
 ## License
 

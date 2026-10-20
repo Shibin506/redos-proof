@@ -8,6 +8,7 @@ repository = "https://github.com/Shibin506/redos-proof"
 license = "MIT"
 readme = "README.md"
 keywords = ["redos", "regex", "security", "static-analysis", "backtracking"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 

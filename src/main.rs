@@ -48,6 +48,17 @@ fn main() -> ExitCode {
         Some((c, r)) => (c.as_str(), r),
         None => return usage(),
     };
+    match cmd {
+        "-h" | "--help" | "help" => {
+            print!("{}", usage_text());
+            return ExitCode::SUCCESS;
+        }
+        "-V" | "--version" | "version" => {
+            println!("redos-proof {}", env!("CARGO_PKG_VERSION"));
+            return ExitCode::SUCCESS;
+        }
+        _ => {}
+    }
     let nfa = |pattern: &str| {
         let f = Flags::parse(dialect, &flags).map_err(|e| e.to_string())?;
         let regex = parse(pattern, dialect, f).map_err(|e| format!("parse error {e}"))?;
@@ -417,11 +428,17 @@ fn fail(e: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
+fn usage_text() -> String {
+    "usage: redos-proof match [--dialect js|python|ruby] [--flags F] <pattern> <input>\n\
+     \x20      redos-proof steps [--dialect ...] [--flags F] <pattern> <prefix> <pump> <suffix> [max-n]\n\
+     \x20      redos-proof scan  [--dialect ...] [--flags F] <pattern>\n\
+     \x20      redos-proof files [--prove] [--sarif] <path>...\n\
+     \x20      redos-proof bench [--no-prove] [corpus-dir]\n\
+     \x20      redos-proof --help | --version\n"
+        .to_string()
+}
+
 fn usage() -> ExitCode {
-    eprintln!("usage: redos-proof match [--dialect js|python|ruby] [--flags F] <pattern> <input>");
-    eprintln!("       redos-proof steps [--dialect ...] [--flags F] <pattern> <prefix> <pump> <suffix> [max-n]");
-    eprintln!("       redos-proof scan  [--dialect ...] [--flags F] <pattern>");
-    eprintln!("       redos-proof files [--prove] [--sarif] <path>...");
-    eprintln!("       redos-proof bench [--no-prove] [corpus-dir]");
+    eprint!("{}", usage_text());
     ExitCode::from(2)
 }
