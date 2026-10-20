@@ -3,9 +3,10 @@
 Finds regular expressions that can freeze a program (ReDoS: catastrophic backtracking), and **proves** each
 finding by building the input that makes it slow and running it on the real regex engine.
 
-> **Status: Phase 2 of 6.** The detector works: it finds exponential and polynomial backtracking and proves
-> each finding by measuring the blow-up, with no false positives against real Node. Runs over an exact model
-> of how JavaScript, Python and Ruby backtrack, checked against the real engines.
+> **Status: Phase 3 of 6.** The detector finds exponential and polynomial backtracking and proves each finding
+> by running the attack on the **real** Node, Python or Ruby and timing the blow-up. It even surfaces where a
+> pattern is dangerous on one engine but mitigated on another. Built on an exact model of how the three engines
+> backtrack, checked against them.
 
 ## Why
 
@@ -21,7 +22,7 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 |---|---|---|
 | 1 | Parser for JavaScript, Python and Ruby syntax; a model of their backtracking, step-counted; checked against the real engines | **done** |
 | 2 | Static analysis: exponential and polynomial ambiguity, the attack string for each finding, confirmed by measurement | **done** |
-| 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths and fit the time curve | |
+| 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths, verdict from the real timings | **done** |
 | 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | |
 | 5 | Measurement: published ReDoS advisories as a test set, real repositories, other tools | |
 | 6 | Figures, docs, polish | |
@@ -29,28 +30,35 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 ## What works now
 
 Scan a pattern for catastrophic backtracking. A finding comes with its proof: the attack input, and the
-measured step count as the attack grows. `scan` exits non-zero on a vulnerable pattern, so it can gate CI.
+**real engine** timing out as the input grows. `scan` exits non-zero when the real engine reproduces the
+blow-up, so it can gate CI or a pre-commit hook.
 
 ```bash
 $ cargo run --release -- scan '(a+)+$'
-VULNERABLE: EXPONENTIAL (one extra character can double the work)
+VULNERABLE (backtracking model): EXPONENTIAL (one extra character can double the work)
   prefix   "aa"
   pump     "a"
   suffix   "!"
-  proof: measured steps as the pump repeats (prefix + pump*n + suffix):
-    n=12   139242 steps
-    n=16   2228198 steps
-    n=20   20000001 steps   (the simulator gave up: the work is already astronomical)
   example attack input (pump x20): "aaaaaaaaaaaaaaaaaaaaaa!"
-
-$ cargo run --release -- scan --dialect python '(?>a+)+$'    # atomic group: safe
-no catastrophic backtracking found (not a guarantee of safety; see the limits in the docs)
-
-$ cargo run --release -- scan '.*.*=.*'
-VULNERABLE: POLYNOMIAL degree 2 (work grows like length^2)
+  real engine (Node): PROVEN EXPONENTIAL
+        13 chars       0.4 ms
+        17 chars       4.6 ms
+        21 chars      72.2 ms
+        25 chars    1225.5 ms
+        29 chars  timed out (still running after 2.5 s)
 ```
 
-Under the hood, the step counter that proves each finding:
+The same pattern is **not** dangerous on every engine, and the tool says so. Ruby 3.2+ memoizes to defeat most
+of these, so `scan --dialect ruby '(a+)+$'` reports it as not reproduced (and exits 0), with a warning that
+the pattern is still dangerous on an engine that does not. A tool that only looks at the pattern's shape gets
+this wrong.
+
+```bash
+$ cargo run --release -- scan --dialect python '(?>a+)+$'    # atomic group: safe
+no catastrophic backtracking found (not a guarantee of safety; see the limits in the docs)
+```
+
+Under the hood, the step counter that proposes each finding:
 
 ```bash
 cargo run --release -- steps '^(a+)+$' '' a '!'        # prefix, pumped string, suffix
@@ -103,7 +111,7 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 
-More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding and proving vulnerable patterns).
+More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines).
 
 ## License
 

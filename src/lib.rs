@@ -7,6 +7,7 @@ pub mod charset;
 pub mod matcher;
 pub mod nfa;
 pub mod parser;
+pub mod prove;
 #[rustfmt::skip]
 mod folds;
 #[rustfmt::skip]

@@ -12,6 +12,7 @@ use std::process::ExitCode;
 use redos_proof::analysis::{Blowup, analyze};
 use redos_proof::matcher::{Outcome, search};
 use redos_proof::nfa::compile;
+use redos_proof::prove::{Timing, Verdict, prove};
 use redos_proof::{Dialect, Flags, parse};
 
 fn main() -> ExitCode {
@@ -105,7 +106,7 @@ fn main() -> ExitCode {
                         Blowup::Exponential => "EXPONENTIAL (one extra character can double the work)".to_string(),
                         Blowup::Polynomial { degree } => format!("POLYNOMIAL degree {degree} (work grows like length^{degree})"),
                     };
-                    println!("VULNERABLE: {kind}");
+                    println!("VULNERABLE (backtracking model): {kind}");
                     let show = |label: &str, v: &[u32]| {
                         let s: String = v.iter().filter_map(|&c| char::from_u32(c)).collect();
                         println!("  {label:8} {s:?}");
@@ -113,16 +114,46 @@ fn main() -> ExitCode {
                     show("prefix", &f.prefix);
                     show("pump", &f.pump);
                     show("suffix", &f.suffix);
-                    println!("  proof: measured steps as the pump repeats (prefix + pump*n + suffix):");
-                    for (n, steps) in &f.growth.samples {
-                        println!("    n={n:<4} {steps} steps");
-                    }
-                    if f.growth.hit_cap {
-                        println!("    (the simulator gave up: the work is already astronomical)");
-                    }
                     println!("  example attack input (pump x20): {:?}", f.input(20));
-                    // Exit non-zero so the command can gate a CI check or a pre-commit hook.
-                    ExitCode::FAILURE
+
+                    // Phase 3: run the attack on the real engine and show the wall-clock proof.
+                    let parsed = Flags::parse(dialect, &flags).unwrap_or_default();
+                    let proof = prove(pattern, dialect, parsed, f);
+                    if !proof.available {
+                        println!(
+                            "  real engine ({}): not installed, cannot run the attack; trusting the model",
+                            proof.engine.name()
+                        );
+                        return ExitCode::FAILURE;
+                    }
+                    let label = match proof.verdict {
+                        Some(Verdict::Exponential) => "PROVEN EXPONENTIAL".to_string(),
+                        Some(Verdict::Polynomial { degree }) => format!("PROVEN POLYNOMIAL (degree {degree})"),
+                        Some(Verdict::NotReproduced) | None => "NOT reproduced".to_string(),
+                    };
+                    println!("  real engine ({}): {label}", proof.engine.name());
+                    for m in &proof.measurements {
+                        match m.timing {
+                            Timing::Millis(t) => println!("    {:>6} chars  {t:>8.1} ms", m.len),
+                            Timing::TimedOut => println!("    {:>6} chars  timed out (still running after 2.5 s)", m.len),
+                        }
+                    }
+                    match proof.verdict {
+                        Some(Verdict::NotReproduced) | None => {
+                            println!(
+                                "  note: the pattern is exponential for a plain backtracking engine, but {} did not slow down.",
+                                proof.engine.name()
+                            );
+                            println!(
+                                "        {} defeats many of these patterns (Ruby 3.2+ memoizes); the same regex would still be dangerous on an engine that does not.",
+                                proof.engine.name()
+                            );
+                            // Not reproduced on this engine: exit 0, but the warning above stands.
+                            ExitCode::SUCCESS
+                        }
+                        // Proven on the real engine: non-zero so the command can gate CI or a pre-commit hook.
+                        _ => ExitCode::FAILURE,
+                    }
                 }
             }
         }
