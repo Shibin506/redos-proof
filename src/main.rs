@@ -6,13 +6,18 @@
 //!       how the work grows as `pump` is repeated: prefix + pump×n + suffix, for n = 1, 2, 4, 8...
 //!   redos-proof scan [--dialect ...] [--flags ...] <pattern>
 //!       report whether the pattern is vulnerable to catastrophic backtracking, with the proof
+//!   redos-proof files [--prove] [--sarif] <path>...
+//!       scan source files or directories for vulnerable regexes (JavaScript, TypeScript, Python, Ruby)
 
 use std::process::ExitCode;
+
+use std::path::PathBuf;
 
 use redos_proof::analysis::{Blowup, analyze};
 use redos_proof::matcher::{Outcome, search};
 use redos_proof::nfa::compile;
 use redos_proof::prove::{Timing, Verdict, prove};
+use redos_proof::scan::{Report, scan_paths};
 use redos_proof::{Dialect, Flags, parse};
 
 fn main() -> ExitCode {
@@ -157,8 +162,166 @@ fn main() -> ExitCode {
                 }
             }
         }
+        ("files", rest) if !rest.is_empty() => files_command(rest),
         _ => usage(),
     }
+}
+
+fn files_command(args: &[String]) -> ExitCode {
+    let mut prove = false;
+    let mut sarif = false;
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for a in args {
+        match a.as_str() {
+            "--prove" => prove = true,
+            "--sarif" => sarif = true,
+            other if other.starts_with("--") => {
+                eprintln!("unknown option {other}");
+                return ExitCode::from(2);
+            }
+            path => paths.push(PathBuf::from(path)),
+        }
+    }
+    if paths.is_empty() {
+        return usage();
+    }
+    // 2 MiB cap skips generated and minified files.
+    let report = scan_paths(&paths, prove, 2 << 20);
+    if sarif {
+        print!("{}", sarif_report(&report));
+    } else {
+        print_report(&report, prove);
+    }
+    // Exit non-zero if anything was found (gating a CI check or pre-commit hook). With --prove, only count
+    // findings the real engine reproduced.
+    let dangerous = report.hits.iter().filter(|h| !prove || h.is_confirmed_on_engine()).count();
+    if dangerous > 0 { ExitCode::FAILURE } else { ExitCode::SUCCESS }
+}
+
+fn print_report(report: &Report, proved: bool) {
+    use redos_proof::prove::{Timing, Verdict};
+    for h in &report.hits {
+        let kind = match h.finding.blowup {
+            Blowup::Exponential => "EXPONENTIAL".to_string(),
+            Blowup::Polynomial { degree } => format!("POLYNOMIAL(^{degree})"),
+        };
+        println!(
+            "{}:{}:{}  {kind}  /{}/{}",
+            h.file.display(),
+            h.literal.line,
+            h.literal.col,
+            h.literal.pattern,
+            h.literal.flags
+        );
+        println!("    attack: {:?}", h.finding.input(20));
+        if let Some(proof) = &h.proof {
+            if !proof.available {
+                println!("    real engine ({}): not installed", proof.engine.name());
+            } else {
+                let label = match proof.verdict {
+                    Some(Verdict::Exponential) => "PROVEN EXPONENTIAL",
+                    Some(Verdict::Polynomial { .. }) => "PROVEN POLYNOMIAL",
+                    _ => "not reproduced on this engine",
+                };
+                let worst = proof.measurements.iter().rev().find_map(|m| match m.timing {
+                    Timing::TimedOut => Some("timed out".to_string()),
+                    Timing::Millis(t) if t > 1.0 => Some(format!("{t:.0} ms")),
+                    _ => None,
+                });
+                match worst {
+                    Some(w) => println!(
+                        "    real engine ({}): {label} ({w} at {} chars)",
+                        proof.engine.name(),
+                        proof.measurements.last().map(|m| m.len).unwrap_or(0)
+                    ),
+                    None => println!("    real engine ({}): {label}", proof.engine.name()),
+                }
+            }
+        }
+    }
+    let confirmed = report.hits.iter().filter(|h| !proved || h.is_confirmed_on_engine()).count();
+    println!(
+        "\nscanned {} files, {} regexes: {} vulnerable{}{}",
+        report.files_scanned,
+        report.regexes_scanned,
+        confirmed,
+        if proved && confirmed != report.hits.len() {
+            format!(" (of {} flagged by the model)", report.hits.len())
+        } else {
+            String::new()
+        },
+        if report.unanalysable > 0 {
+            format!(", {} not analysable", report.unanalysable)
+        } else {
+            String::new()
+        },
+    );
+}
+
+/// A minimal SARIF 2.1.0 document, for GitHub code scanning. Hand-written to keep the tool dependency-free.
+fn sarif_report(report: &Report) -> String {
+    let mut results = String::new();
+    for (i, h) in report.hits.iter().enumerate() {
+        if i > 0 {
+            results.push(',');
+        }
+        let kind = match h.finding.blowup {
+            Blowup::Exponential => "exponential".to_string(),
+            Blowup::Polynomial { degree } => format!("polynomial (degree {degree})"),
+        };
+        let msg = format!(
+            "Regex vulnerable to {kind} backtracking (ReDoS). Attack input: {}",
+            truncate(&h.finding.input(20), 80)
+        );
+        let level = if matches!(h.finding.blowup, Blowup::Exponential) {
+            "error"
+        } else {
+            "warning"
+        };
+        results.push_str("{\"ruleId\":\"redos\",\"level\":");
+        results.push_str(&json_string(level));
+        results.push_str(",\"message\":{\"text\":");
+        results.push_str(&json_string(&msg));
+        results.push_str("},\"locations\":[{\"physicalLocation\":{\"artifactLocation\":{\"uri\":");
+        results.push_str(&json_string(&h.file.display().to_string()));
+        results.push_str("},\"region\":{\"startLine\":");
+        results.push_str(&h.literal.line.max(1).to_string());
+        results.push_str(",\"startColumn\":");
+        results.push_str(&h.literal.col.max(1).to_string());
+        results.push_str("}}}]}");
+    }
+    let header = "{\"version\":\"2.1.0\",\"$schema\":\"https://json.schemastore.org/sarif-2.1.0.json\",\
+\"runs\":[{\"tool\":{\"driver\":{\"name\":\"redos-proof\",\
+\"informationUri\":\"https://github.com/Shibin506/redos-proof\",\
+\"rules\":[{\"id\":\"redos\",\"name\":\"ReDoS\",\
+\"shortDescription\":{\"text\":\"Regular expression vulnerable to catastrophic backtracking\"}}]}},\"results\":[";
+    format!("{header}{results}]}}]}}\n")
+}
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        s.to_string()
+    } else {
+        format!("{}...", s.chars().take(n).collect::<String>())
+    }
+}
+
+/// JSON-encodes a string (the only JSON escaping the SARIF writer needs).
+fn json_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn fail(e: &str) -> ExitCode {
@@ -170,5 +333,6 @@ fn usage() -> ExitCode {
     eprintln!("usage: redos-proof match [--dialect js|python|ruby] [--flags F] <pattern> <input>");
     eprintln!("       redos-proof steps [--dialect ...] [--flags F] <pattern> <prefix> <pump> <suffix> [max-n]");
     eprintln!("       redos-proof scan  [--dialect ...] [--flags F] <pattern>");
+    eprintln!("       redos-proof files [--prove] [--sarif] <path>...");
     ExitCode::from(2)
 }

@@ -3,10 +3,10 @@
 Finds regular expressions that can freeze a program (ReDoS: catastrophic backtracking), and **proves** each
 finding by building the input that makes it slow and running it on the real regex engine.
 
-> **Status: Phase 3 of 6.** The detector finds exponential and polynomial backtracking and proves each finding
-> by running the attack on the **real** Node, Python or Ruby and timing the blow-up. It even surfaces where a
-> pattern is dangerous on one engine but mitigated on another. Built on an exact model of how the three engines
-> backtrack, checked against them.
+> **Status: Phase 4 of 6.** Point it at a codebase: it pulls the regexes out of JavaScript, TypeScript, Python
+> and Ruby source, finds the vulnerable ones, and proves each by running the attack on the real engine. Ships a
+> pre-commit hook, a GitHub Action and SARIF output. Built on an exact model of how the three engines backtrack,
+> checked against them.
 
 ## Why
 
@@ -23,7 +23,7 @@ only with the evidence attached: the attack string, and the measured blow-up on 
 | 1 | Parser for JavaScript, Python and Ruby syntax; a model of their backtracking, step-counted; checked against the real engines | **done** |
 | 2 | Static analysis: exponential and polynomial ambiguity, the attack string for each finding, confirmed by measurement | **done** |
 | 3 | The proof: run each attack on real Node, Python and Ruby at growing lengths, verdict from the real timings | **done** |
-| 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | |
+| 4 | Scanner: regexes in source code across languages; CLI, SARIF, pre-commit hook, GitHub Action | **done** |
 | 5 | Measurement: published ReDoS advisories as a test set, real repositories, other tools | |
 | 6 | Figures, docs, polish | |
 
@@ -57,6 +57,22 @@ this wrong.
 $ cargo run --release -- scan --dialect python '(?>a+)+$'    # atomic group: safe
 no catastrophic backtracking found (not a guarantee of safety; see the limits in the docs)
 ```
+
+Or scan a whole codebase — it pulls the regexes out of JavaScript, TypeScript, Python and Ruby source (skipping
+`node_modules`, `.git`, and the like) and reports the vulnerable ones with their location:
+
+```bash
+$ cargo run --release -- files src/
+src/app.js:1:12  EXPONENTIAL  /(a+)+$/
+    attack: "aaaaaaaaaaaaaaaaaaaaaa!"
+val.py:2:17  EXPONENTIAL  /(.*,)*$/
+    attack: ",,,,,,,,,,,,,,,,,,,,!"
+
+scanned 2 files, 3 regexes: 2 vulnerable
+```
+
+Add `--prove` to run each finding on the real engine, or `--sarif` for a GitHub code-scanning report. A
+pre-commit hook (`hooks/pre-commit`) and a GitHub Action (`.github/actions/redos-proof`) are included.
 
 Under the hood, the step counter that proposes each finding:
 
@@ -111,7 +127,7 @@ Random testing against three engines found bugs in two of them. Each is minimize
 | Ruby 3.3.6 | `/\W+k/i` on `"!\u212A"` (Kelvin sign) | `nil`, while the identical `/\W+(?:k\|\u212A)/i` matches: an optimization makes `\W+` possessive, ignoring case folding |
 | CPython 3.11.15 | `re.search(r"(?:(x)y\|){2}+", "xy")` | `SystemError: The span of capturing group is wrong, please report a bug for the re module` (without the `+`, it matches `"xy"`) |
 
-More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines).
+More: [docs/phase-1.md](docs/phase-1.md) (the backtracking model and the engine bugs it found), [docs/phase-2.md](docs/phase-2.md) (finding vulnerable patterns), [docs/phase-3.md](docs/phase-3.md) (proving them on the real engines), [docs/phase-4.md](docs/phase-4.md) (scanning real codebases).
 
 ## License
 

@@ -1,0 +1,21 @@
+# Example: scan this repository for ReDoS on every push, and upload findings to code scanning.
+name: ReDoS scan
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  redos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - name: Scan source for ReDoS
+        run: ./target/release/redos-proof files --sarif src tests > redos.sarif || true
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: redos.sarif

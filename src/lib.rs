@@ -8,6 +8,8 @@ pub mod matcher;
 pub mod nfa;
 pub mod parser;
 pub mod prove;
+pub mod scan;
+pub mod source;
 #[rustfmt::skip]
 mod folds;
 #[rustfmt::skip]

@@ -1,0 +1,30 @@
+name: redos-proof
+description: Scan a repository for regexes vulnerable to catastrophic backtracking (ReDoS), and upload the findings to GitHub code scanning.
+inputs:
+  paths:
+    description: Paths to scan (space-separated).
+    default: "."
+  prove:
+    description: Also run each finding on the real engine and only fail on reproduced ones.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+    - name: Build redos-proof
+      shell: bash
+      run: cargo build --release --locked
+      working-directory: ${{ github.action_path }}/../../..
+    - name: Scan
+      shell: bash
+      run: |
+        bin="${{ github.action_path }}/../../../target/release/redos-proof"
+        args=""
+        [ "${{ inputs.prove }}" = "true" ] && args="--prove"
+        # Write SARIF for code scanning, and a human report in the log. Do not fail the step here;
+        # the SARIF upload surfaces the findings.
+        "$bin" files --sarif $args ${{ inputs.paths }} > redos.sarif || true
+        "$bin" files $args ${{ inputs.paths }} || true
+    - uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: redos.sarif

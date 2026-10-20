@@ -1,0 +1,7 @@
+- id: redos-proof
+  name: redos-proof (ReDoS scan)
+  description: Scan changed JavaScript, TypeScript, Python and Ruby files for regexes vulnerable to catastrophic backtracking.
+  entry: redos-proof files
+  language: system
+  types_or: [javascript, ts, tsx, jsx, python, ruby]
+  pass_filenames: true

@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# A git pre-commit hook: block a commit that adds a regex vulnerable to catastrophic backtracking.
+# Install:  ln -s ../../hooks/pre-commit .git/hooks/pre-commit   (and build redos-proof, or put it on PATH)
+set -euo pipefail
+
+bin="${REDOS_PROOF:-redos-proof}"
+if ! command -v "$bin" >/dev/null 2>&1 && [ -x target/release/redos-proof ]; then
+  bin="target/release/redos-proof"
+fi
+
+# Only the staged source files this tool understands.
+mapfile -t files < <(git diff --cached --name-only --diff-filter=ACM | grep -Ei '\.(js|jsx|ts|tsx|mjs|cjs|py|pyi|rb)$' || true)
+[ ${#files[@]} -eq 0 ] && exit 0
+
+if ! "$bin" files "${files[@]}"; then
+  echo
+  echo "redos-proof found a regex vulnerable to catastrophic backtracking (see above)."
+  echo "Fix it, or commit with --no-verify to override."
+  exit 1
+fi
